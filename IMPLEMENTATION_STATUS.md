@@ -30,6 +30,9 @@ This document tracks the implementation status of all Bose SoundTouch Web API en
 - ✅ `GET /presets` - Get all presets (up to 6)
 - ✅ `POST /select` - Select preset or content item
   - Supports: Internet Radio, Spotify, all sources
+- ✅ `POST /storePreset` - Store preset to slot (1-6) with persistent storage
+- ✅ `POST /removePreset` - Remove specific preset
+- ✅ `POST /removeAllPresets` - Remove all presets
 - ✅ `GET /recents` - Recently played items (last 20)
 - ✅ `GET /sources` - Available input sources
   - Returns: INTERNET_RADIO, SPOTIFY, BLUETOOTH, AUX, STORED_MUSIC
@@ -52,16 +55,42 @@ This document tracks the implementation status of all Bose SoundTouch Web API en
 - ✅ WebSocket notifications at `/notifications`
   - Real-time updates for zones, playback, volume, etc.
 
+## 🔄 Cloud Replacement Endpoints (Device-Initiated)
+
+These endpoints allow Bose devices to connect TO our server (replacing Bose cloud):
+
+- ✅ `POST /device/register` - Device registration
+- ✅ `GET /device/:deviceId/config` - Get device configuration
+- ✅ `POST /device/:deviceId/presets` - Sync presets from device
+- ✅ `GET /device/:deviceId/presets` - Get presets for device
+- ✅ `GET /device/:deviceId/presets?presetId=1` - Get specific preset (preset button)
+- ✅ `POST /device/:deviceId/recents` - Sync recents from device
+- ✅ `GET /device/:deviceId/recents` - Get recents for device
+- ✅ `POST /device/:deviceId/sources` - Sync sources from device
+- ✅ `GET /device/:deviceId/sources` - Get sources for device
+- ✅ `GET /account/:accountId/devices` - List all devices for account
+
+**Storage:** All device data persisted to filesystem at `data/accounts/{accountId}/devices/{deviceId}/`
+
 ## 🎯 Priority Features (Requested)
 
 ### 1. Web Radio Configuration on Presets ✅
-**Status: FULLY IMPLEMENTED**
+**Status: FULLY IMPLEMENTED WITH PERSISTENT STORAGE**
 
 - Presets support Internet Radio stations
-- Can store up to 6 presets
+- Can store up to 6 presets per device
+- Persistent storage in filesystem (soundcork-compatible)
+- Preset buttons query server for preset details
 - Default presets include BBC Radio, Jazz Radio, Classical Radio
 - Full XML-based preset management
 - Support for custom stream URLs
+
+**Preset Button Flow:**
+1. User stores preset: `POST /storePreset?deviceId=X&presetId=1`
+2. Server saves to: `data/accounts/default/devices/X/Presets.xml`
+3. Device presses button: `GET /device/X/presets?presetId=1`
+4. Server returns preset details
+5. Device plays the stream
 
 **Example:**
 ```xml
@@ -189,20 +218,22 @@ ws.on('message', (data) => {
 | Device Info | 5/5 | ✅ 100% |
 | Playback Control | 3/3 | ✅ 100% |
 | Audio Control | 7/7 | ✅ 100% |
-| Content & Sources | 4/4 | ✅ 100% |
+| Content & Sources | 7/7 | ✅ 100% |
 | Multiroom (Zones) | 5/5 | ✅ 100% |
 | Groups | 2/2 | ✅ 100% |
 | Media Servers | 1/1 | ✅ 100% |
 | WebSocket | 1/1 | ✅ 100% |
-| **TOTAL CORE API** | **28/28** | **✅ 100%** |
+| Cloud Replacement | 9/9 | ✅ 100% |
+| **TOTAL API** | **40/40** | **✅ 100%** |
 
 ## 🎯 Priority Features Status
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Web Radio Presets | ✅ Complete | 6 presets, custom URLs, default stations |
+| Web Radio Presets | ✅ Complete | 6 presets, persistent storage, preset buttons |
 | Spotify Integration | ✅ Complete | All URI types, presets, metadata |
 | Multiroom (Zones) | ✅ Complete | Full zone management, dynamic members |
+| Cloud Replacement | ✅ Complete | Device registration, preset sync, soundcork-compatible |
 
 ## 🚀 Ready for Production
 

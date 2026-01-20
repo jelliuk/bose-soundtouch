@@ -1,8 +1,9 @@
-import { parseStringPromise } from 'xml2js';
+import { parseStringPromise, Builder } from 'xml2js';
 
 export class PresetStorageController {
-  constructor(deviceManager) {
+  constructor(deviceManager, storage) {
     this.deviceManager = deviceManager;
+    this.storage = storage;
   }
 
   async storePreset(req, res) {
@@ -54,6 +55,9 @@ export class PresetStorageController {
 
       device.setPresets(presets);
 
+      // Save to persistent storage
+      await this.savePresetsToStorage(device);
+
       // Emit update event
       this.deviceManager.emit('update', {
         type: 'presetsUpdated',
@@ -86,6 +90,9 @@ export class PresetStorageController {
 
     console.log(`Removed preset ${presetId} from ${device.name}`);
 
+    // Save to persistent storage
+    await this.savePresetsToStorage(device);
+
     // Emit update event
     this.deviceManager.emit('update', {
       type: 'presetsUpdated',
@@ -108,6 +115,9 @@ export class PresetStorageController {
 
     console.log(`Removed all presets from ${device.name}`);
 
+    // Save to persistent storage
+    await this.savePresetsToStorage(device);
+
     // Emit update event
     this.deviceManager.emit('update', {
       type: 'presetsUpdated',
@@ -117,5 +127,45 @@ export class PresetStorageController {
 
     res.set('Content-Type', 'application/xml');
     res.send('<status>OK</status>');
+  }
+
+  /**
+   * Convert in-memory presets to XML and save to persistent storage
+   */
+  async savePresetsToStorage(device) {
+    if (!this.storage) {
+      console.warn('Storage not available, skipping preset persistence');
+      return;
+    }
+
+    const accountId = device.accountId || 'default';
+    const presets = device.getPresets();
+
+    // Convert presets to XML format expected by devices
+    const builder = new Builder({ rootName: 'presets' });
+    const presetsData = {
+      preset: presets.map(p => ({
+        $: {
+          id: p.id,
+          createdOn: p.createdOn || Date.now(),
+          updatedOn: p.updatedOn || Date.now()
+        },
+        ContentItem: {
+          $: {
+            source: p.source || 'INTERNET_RADIO',
+            type: p.type || 'station',
+            location: p.location || '',
+            sourceAccount: p.sourceAccount || '',
+            isPresetable: 'true'
+          },
+          itemName: p.name,
+          containerArt: p.art || ''
+        }
+      }))
+    };
+
+    const xml = builder.buildObject(presetsData);
+    this.storage.savePresets(accountId, device.id, xml);
+    console.log(`Persisted ${presets.length} presets to storage for ${device.name}`);
   }
 }

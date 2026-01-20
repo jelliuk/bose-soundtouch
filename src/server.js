@@ -30,7 +30,7 @@ const storage = new FileStorage(process.env.DATA_DIR || './data');
 
 // Controllers
 const presetController = new PresetController(deviceManager);
-const presetStorageController = new PresetStorageController(deviceManager);
+const presetStorageController = new PresetStorageController(deviceManager, storage);
 const zoneController = new ZoneController(deviceManager);
 const playbackController = new PlaybackController(deviceManager);
 const volumeController = new VolumeController(deviceManager);

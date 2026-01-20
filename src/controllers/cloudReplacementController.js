@@ -133,18 +133,55 @@ export class CloudReplacementController {
    * Get Presets
    * Device requests its presets from server
    * GET /device/:deviceId/presets
+   * GET /device/:deviceId/presets?presetId=1 (specific preset)
    */
   async getPresets(req, res) {
     const deviceId = req.params.deviceId;
     const accountId = req.headers['x-account-id'] || req.query.accountId || 'default';
+    const presetId = req.query.presetId;
 
-    console.log(`Preset request from device: ${deviceId}`);
+    if (presetId) {
+      console.log(`Preset ${presetId} request from device: ${deviceId}`);
+    } else {
+      console.log(`All presets request from device: ${deviceId}`);
+    }
 
-    const presets = this.storage.loadPresets(accountId, deviceId);
+    const presetsXml = this.storage.loadPresets(accountId, deviceId);
     
-    if (presets) {
-      res.set('Content-Type', 'application/xml');
-      res.send(presets);
+    if (presetsXml) {
+      // If requesting a specific preset, filter it
+      if (presetId) {
+        try {
+          const parsed = await parseStringPromise(presetsXml);
+          if (parsed.presets?.preset) {
+            const presetArray = Array.isArray(parsed.presets.preset) 
+              ? parsed.presets.preset 
+              : [parsed.presets.preset];
+            
+            const preset = presetArray.find(p => p.$?.id === presetId);
+            
+            if (preset) {
+              const builder = new Builder({ rootName: 'presets' });
+              const singlePresetData = {
+                preset: preset
+              };
+              res.set('Content-Type', 'application/xml');
+              res.send(builder.buildObject(singlePresetData));
+              return;
+            }
+          }
+          // Preset not found
+          res.status(404).set('Content-Type', 'application/xml');
+          res.send('<error>Preset not found</error>');
+        } catch (error) {
+          console.error('Error parsing presets:', error);
+          res.status(500).send('<error>Parse failed</error>');
+        }
+      } else {
+        // Return all presets
+        res.set('Content-Type', 'application/xml');
+        res.send(presetsXml);
+      }
     } else {
       // Return empty presets
       res.set('Content-Type', 'application/xml');

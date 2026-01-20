@@ -4,33 +4,55 @@
 
 Web radio presets allow you to save and quickly access internet radio stations on your Bose SoundTouch devices. Each device supports up to 6 presets.
 
+## How Preset Buttons Work
+
+When a user presses a preset button on their Bose device:
+
+1. **Device queries server**: `GET /device/{deviceId}/presets?presetId=1`
+2. **Server returns preset details**: XML with station URL, name, artwork
+3. **Device plays the stream**: Automatically starts playing the web radio station
+
+This implementation matches the soundcork approach and ensures presets are stored persistently in the filesystem at `data/accounts/{accountId}/devices/{deviceId}/Presets.xml`.
+
 ## Method 1: Using the API (Recommended)
 
-### Step 1: Play the Web Radio Station
+### Store a Web Radio Preset
 
-First, select and play the radio station you want to save:
+Save a radio station to a preset slot (1-6):
 
 ```bash
-curl -X POST "http://localhost:8090/select?deviceId=device1" \
+curl -X POST "http://localhost:8090/storePreset?deviceId=device1&presetId=1" \
   -H "Content-Type: application/xml" \
-  -d '<?xml version="1.0" encoding="UTF-8"?>
-<ContentItem source="INTERNET_RADIO" type="station" location="http://stream.example.com/radio" isPresetable="true">
+  -d '<ContentItem source="INTERNET_RADIO" type="station" location="http://stream.example.com/radio">
   <itemName>My Favorite Radio</itemName>
   <containerArt>http://example.com/logo.jpg</containerArt>
 </ContentItem>'
 ```
 
 **Key Parameters:**
+- `deviceId` - Your device identifier
+- `presetId` - Preset slot number (1-6)
 - `source="INTERNET_RADIO"` - Identifies this as internet radio
 - `type="station"` - Content type
 - `location="http://..."` - The stream URL
-- `isPresetable="true"` - Marks it as saveable to preset
 - `itemName` - Display name for the station
 - `containerArt` - Optional logo/artwork URL
 
-### Step 2: Save to Preset (Simulated)
+**What happens:**
+1. Server stores preset in memory
+2. Server saves preset to persistent storage: `data/accounts/default/devices/{deviceId}/Presets.xml`
+3. When device presses preset button, it queries server and receives the preset details
+4. Device automatically plays the web radio stream
 
-In the real Bose API, you would use the `/storePreset` endpoint. For this server, presets are configured in the initialization or via direct device state management.
+### Test Preset Button
+
+Simulate a device pressing preset button 1:
+
+```bash
+curl -X GET "http://localhost:8090/device/device1/presets?presetId=1&accountId=default"
+```
+
+This returns the preset details in XML format that the device uses to play the stream.
 
 ## Method 2: Configure Default Presets (Server-Side)
 
@@ -70,101 +92,34 @@ export function initializeDefaultPresets(device) {
 
 ## Method 3: Runtime Preset Management
 
-### Add Preset Management Endpoints
+### Available Endpoints
 
-Create a new controller for preset storage:
+The server provides complete preset management:
 
-```javascript
-// src/controllers/presetStorageController.js
-import { parseStringPromise } from 'xml2js';
+```bash
+# Store a preset (saves to persistent storage)
+POST /storePreset?deviceId={id}&presetId={1-6}
 
-export class PresetStorageController {
-  constructor(deviceManager) {
-    this.deviceManager = deviceManager;
-  }
+# Remove a specific preset
+POST /removePreset?deviceId={id}&presetId={1-6}
 
-  async storePreset(req, res) {
-    try {
-      const xml = await parseStringPromise(req.body);
-      const device = this.deviceManager.getDevice(req.query.deviceId);
-      
-      if (!device) {
-        return res.status(404).send('<error>Device not found</error>');
-      }
+# Remove all presets
+POST /removeAllPresets?deviceId={id}
 
-      const contentItem = xml.ContentItem;
-      const presetId = req.query.presetId || '1'; // Preset slot 1-6
+# Get all presets (for device)
+GET /device/{deviceId}/presets?accountId={accountId}
 
-      const preset = {
-        id: presetId,
-        name: contentItem.itemName?.[0] || 'Unnamed Station',
-        source: contentItem.$?.source || 'INTERNET_RADIO',
-        type: contentItem.$?.type || 'station',
-        location: contentItem.$?.location || '',
-        art: contentItem.containerArt?.[0] || '',
-        sourceAccount: contentItem.$?.sourceAccount || '',
-        createdOn: Date.now(),
-        updatedOn: Date.now()
-      };
-
-      // Get current presets
-      const presets = device.getPresets();
-      
-      // Find and update or add new
-      const existingIndex = presets.findIndex(p => p.id === presetId);
-      if (existingIndex >= 0) {
-        presets[existingIndex] = preset;
-      } else {
-        presets.push(preset);
-      }
-
-      // Keep only 6 presets
-      if (presets.length > 6) {
-        presets.splice(6);
-      }
-
-      device.setPresets(presets);
-
-      res.set('Content-Type', 'application/xml');
-      res.send('<status>OK</status>');
-    } catch (error) {
-      console.error('Error storing preset:', error);
-      res.status(400).send('<error>Invalid request</error>');
-    }
-  }
-
-  async removePreset(req, res) {
-    const device = this.deviceManager.getDevice(req.query.deviceId);
-    const presetId = req.query.presetId;
-    
-    if (!device) {
-      return res.status(404).send('<error>Device not found</error>');
-    }
-
-    const presets = device.getPresets().filter(p => p.id !== presetId);
-    device.setPresets(presets);
-
-    res.set('Content-Type', 'application/xml');
-    res.send('<status>OK</status>');
-  }
-}
+# Get specific preset (for device preset button)
+GET /device/{deviceId}/presets?presetId={1-6}&accountId={accountId}
 ```
 
-### Add Routes to Server
+### Complete Example
 
-Update `src/server.js`:
-
-```javascript
-import { PresetStorageController } from './controllers/presetStorageController.js';
-
-// ... existing code ...
-
-const presetStorageController = new PresetStorageController(deviceManager);
-
-// Add routes
-app.post('/storePreset', (req, res) => presetStorageController.storePreset(req, res));
-app.post('/removePreset', (req, res) => presetStorageController.removePreset(req, res));
-```
+See `examples/test-preset-button.sh` for a complete test script that demonstrates:
+1. Storing web radio presets
+2. Storing Spotify presets
+3. Querying specific presets (simulating button press)
+4. Verifying persistent storage
 
 ## Popular Web Radio Streams
 
