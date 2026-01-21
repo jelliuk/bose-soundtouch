@@ -11,7 +11,7 @@ services:
       - ./config:/app/config # Update Mount or Bind if required
       - ./data:/app/data # Update Mount or Bind if required
     environment:
-      - TZ=${TZ}
-      - PUID=${PUID}
-      - PGID=${PGID}
+      - TZ=${TZ} # Update to required TZ as necessary
+      - PUID=${PUID} # Update to required User ID of Host User as necessary
+      - PGID=${PGID} # Update to required Group ID of Host User as necessary
       - NODE_ENV=production # Preferred over development/test - https://nodejs.org/en/learn/getting-started/nodejs-the-difference-between-development-and-production#nodejs-the-difference-between-development-and-production
