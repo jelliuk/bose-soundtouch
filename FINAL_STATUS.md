@@ -50,6 +50,7 @@ All requested features have been implemented, tested, and documented.
 - No external dependencies
 - Real-time notifications
 - Settings persistence
+- **VERIFIED WORKING** with live device (08DF1F0EBF49)
 
 ## API Endpoints
 
@@ -245,6 +246,9 @@ bose-soundtouch-server/
 - ✅ Preset types tested (TuneIn, Spotify, Direct URLs)
 - ✅ Zone management tested
 - ✅ Persistent storage tested
+- ✅ **Live device testing** (SoundTouch 20 - 08DF1F0EBF49)
+- ✅ **Device loading verified** (Web UI displays registered devices)
+- ✅ **Preset loading verified** (4 presets: 2 TuneIn, 2 Spotify)
 
 **Test Scripts:**
 - test-api.sh - Tests all 46 endpoints + Web UI

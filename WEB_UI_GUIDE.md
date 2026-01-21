@@ -331,10 +331,29 @@ The Web UI is fully responsive and works on:
 **Problem**: Device list is empty
 
 **Solutions:**
-1. Click "Refresh Devices"
-2. Verify devices have registered with server
-3. Check account ID in settings
-4. Review server logs for registration errors
+1. Click "Refresh Devices" button
+2. Check browser console (F12) for errors
+3. Verify devices have registered with server:
+   ```bash
+   curl http://localhost:8090/account/default/devices
+   ```
+4. Check account ID in Settings tab matches device configuration
+5. Verify server is running and accessible
+6. Check browser console for CORS errors
+7. Try adding a device manually using the form
+
+**Debug Steps:**
+1. Open browser console (F12 → Console tab)
+2. Click "Refresh Devices"
+3. Look for console messages showing:
+   - "Refreshing devices..."
+   - "Fetching from: http://..."
+   - "Response status: 200"
+   - "Received data: {...}"
+4. If you see errors, check:
+   - Server URL in Settings tab
+   - Server is running: `npm start`
+   - Network connectivity
 
 ### Presets Not Loading
 

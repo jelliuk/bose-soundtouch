@@ -102,4 +102,13 @@ export class FileStorage {
     const path = join(this.getDevicePath(accountId, deviceId), 'DeviceInfo.xml');
     return existsSync(path);
   }
+
+  // List all accounts
+  listAccounts() {
+    const accountsPath = join(this.dataDir, 'accounts');
+    if (!existsSync(accountsPath)) {
+      return [];
+    }
+    return readdirSync(accountsPath);
+  }
 }

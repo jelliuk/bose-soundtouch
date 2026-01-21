@@ -7,18 +7,23 @@ if [ $# -lt 2 ]; then
   echo "Usage: $0 <device_ip> <server_url> [account_id]"
   echo ""
   echo "Example:"
-  echo "  $0 192.168.1.100 http://soundcork.local:8090 default"
+  echo "  $0 192.168.1.100 http://192.168.1.163:8090 default"
   echo ""
   echo "This script will:"
   echo "  1. Extract device information from the device"
   echo "  2. Upload it to your server"
   echo "  3. Provide instructions for device reconfiguration"
+  echo ""
+  echo "Note: Make sure your server is running at the specified URL"
   exit 1
 fi
 
 DEVICE_IP="$1"
 SERVER_URL="$2"
 ACCOUNT_ID="${3:-default}"
+
+# Remove trailing slash from server URL
+SERVER_URL="${SERVER_URL%/}"
 
 TEMP_DIR=$(mktemp -d)
 trap "rm -rf $TEMP_DIR" EXIT
@@ -31,13 +36,40 @@ echo "Server URL: $SERVER_URL"
 echo "Account ID: $ACCOUNT_ID"
 echo ""
 
+# Step 0: Verify server is accessible
+echo "Step 0: Verifying server connectivity..."
+echo ""
+
+if curl -s -f "${SERVER_URL}/account/${ACCOUNT_ID}/devices" > /dev/null 2>&1; then
+  echo "  ✓ Server is accessible"
+else
+  echo "  ✗ Cannot connect to server at: ${SERVER_URL}"
+  echo ""
+  echo "Make sure:"
+  echo "  1. Server is running (npm start)"
+  echo "  2. Server URL is correct: ${SERVER_URL}"
+  echo "  3. Server is accessible from this machine"
+  echo ""
+  echo "Test with: curl ${SERVER_URL}/account/${ACCOUNT_ID}/devices"
+  exit 1
+fi
+echo ""
+
 # Step 1: Extract device information
 echo "Step 1: Extracting device information..."
 echo ""
 
 echo "  - Getting device info..."
 if curl -s "http://${DEVICE_IP}:8090/info" > "${TEMP_DIR}/DeviceInfo.xml"; then
-  echo "    ✓ DeviceInfo.xml"
+  # Check if we got valid XML
+  if grep -q "<info" "${TEMP_DIR}/DeviceInfo.xml"; then
+    echo "    ✓ DeviceInfo.xml"
+  else
+    echo "    ✗ Invalid device info response"
+    echo "    Response:"
+    cat "${TEMP_DIR}/DeviceInfo.xml"
+    exit 1
+  fi
 else
   echo "    ✗ Failed to get device info"
   echo ""
@@ -45,15 +77,23 @@ else
   echo "  1. Device is powered on"
   echo "  2. Device IP is correct: $DEVICE_IP"
   echo "  3. Device is on same network"
+  echo "  4. Device API is accessible on port 8090"
   exit 1
 fi
 
-# Extract device ID
+# Extract device ID - try multiple patterns
 DEVICE_ID=$(grep -o 'deviceID="[^"]*"' "${TEMP_DIR}/DeviceInfo.xml" | cut -d'"' -f2)
-DEVICE_NAME=$(grep -o '<name>[^<]*</name>' "${TEMP_DIR}/DeviceInfo.xml" | sed 's/<[^>]*>//g')
+if [ -z "$DEVICE_ID" ]; then
+  # Try alternative pattern
+  DEVICE_ID=$(grep -o '<deviceID>[^<]*</deviceID>' "${TEMP_DIR}/DeviceInfo.xml" | sed 's/<[^>]*>//g')
+fi
+
+DEVICE_NAME=$(grep -o '<name>[^<]*</name>' "${TEMP_DIR}/DeviceInfo.xml" | sed 's/<[^>]*>//g' | head -1)
 
 if [ -z "$DEVICE_ID" ]; then
-  echo "    ✗ Could not extract device ID"
+  echo "    ✗ Could not extract device ID from response"
+  echo "    DeviceInfo.xml content:"
+  cat "${TEMP_DIR}/DeviceInfo.xml"
   exit 1
 fi
 
@@ -76,16 +116,45 @@ echo "Step 2: Uploading device data to server..."
 echo ""
 
 echo "  - Registering device..."
-RESPONSE=$(curl -s -X POST "${SERVER_URL}/device/register" \
+echo "    Sending to: ${SERVER_URL}/device/register"
+echo "    Account ID: ${ACCOUNT_ID}"
+echo "    Device ID: ${DEVICE_ID}"
+
+# Send registration request with verbose output
+RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${SERVER_URL}/device/register" \
   -H "Content-Type: application/xml" \
   -H "X-Account-ID: ${ACCOUNT_ID}" \
-  --data-binary "@${TEMP_DIR}/DeviceInfo.xml")
+  --data-binary "@${TEMP_DIR}/DeviceInfo.xml" 2>&1)
 
-if echo "$RESPONSE" | grep -q "OK"; then
-  echo "    ✓ Device registered"
+HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+BODY=$(echo "$RESPONSE" | sed '$d')
+
+echo "    HTTP Status: $HTTP_CODE"
+
+if [ "$HTTP_CODE" = "200" ] || echo "$BODY" | grep -qi "OK\|status"; then
+  echo "    ✓ Device registered successfully"
 else
-  echo "    ✗ Registration failed:"
-  echo "$RESPONSE"
+  echo "    ✗ Registration failed"
+  echo ""
+  echo "Response body:"
+  echo "$BODY"
+  echo ""
+  echo "Debug information:"
+  echo "  Server URL: ${SERVER_URL}/device/register"
+  echo "  Account ID: ${ACCOUNT_ID}"
+  echo "  Device ID: ${DEVICE_ID}"
+  echo ""
+  echo "DeviceInfo.xml (first 20 lines):"
+  head -20 "${TEMP_DIR}/DeviceInfo.xml"
+  echo ""
+  echo "Troubleshooting:"
+  echo "  1. Check server logs for errors"
+  echo "  2. Verify server is running: curl ${SERVER_URL}/account/${ACCOUNT_ID}/devices"
+  echo "  3. Try manual registration:"
+  echo "     curl -X POST '${SERVER_URL}/device/register' \\"
+  echo "       -H 'Content-Type: application/xml' \\"
+  echo "       -H 'X-Account-ID: ${ACCOUNT_ID}' \\"
+  echo "       --data-binary '@${TEMP_DIR}/DeviceInfo.xml'"
   exit 1
 fi
 

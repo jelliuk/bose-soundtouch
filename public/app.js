@@ -1,18 +1,37 @@
 // Configuration
 let config = {
-    serverUrl: 'http://localhost:8090',
+    serverUrl: getDefaultServerUrl(),
     accountId: 'default',
     currentDevice: null
 };
+
+// Get default server URL based on current location
+function getDefaultServerUrl() {
+    // Use the current host and port from the browser URL
+    const protocol = window.location.protocol; // http: or https:
+    const hostname = window.location.hostname; // e.g., localhost or 192.168.1.100
+    const port = window.location.port || '8090'; // Use current port or default to 8090
+    return `${protocol}//${hostname}:${port}`;
+}
 
 // Load config from localStorage
 function loadConfig() {
     const saved = localStorage.getItem('bose-config');
     if (saved) {
-        config = { ...config, ...JSON.parse(saved) };
-        document.getElementById('server-url').value = config.serverUrl;
-        document.getElementById('account-id').value = config.accountId;
+        const savedConfig = JSON.parse(saved);
+        config = { ...config, ...savedConfig };
+    } else {
+        // First time - auto-detect server URL
+        config.serverUrl = getDefaultServerUrl();
+        // Save the auto-detected config
+        localStorage.setItem('bose-config', JSON.stringify(config));
     }
+    
+    // Update UI fields
+    document.getElementById('server-url').value = config.serverUrl;
+    document.getElementById('account-id').value = config.accountId;
+    
+    console.log('Loaded config:', config);
 }
 
 // Save config to localStorage
@@ -83,14 +102,45 @@ function showNotification(message, type = 'info') {
 
 // Device Management
 async function refreshDevices() {
+    console.log('Refreshing devices...');
+    console.log('Server URL:', config.serverUrl);
+    console.log('Account ID:', config.accountId);
+    
     try {
-        const response = await fetch(`${config.serverUrl}/account/${config.accountId}/devices`);
-        const data = await response.json();
+        const url = `${config.serverUrl}/account/${config.accountId}/devices`;
+        console.log('Fetching from:', url);
         
-        displayDevices(data.devices || []);
+        const response = await fetch(url);
+        console.log('Response status:', response.status);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        console.log('Received data:', data);
+        
+        const devices = data.devices || [];
+        console.log('Devices:', devices);
+        
+        displayDevices(devices);
         populateDeviceSelects();
+        
+        showNotification(`Loaded ${devices.length} device(s)`, 'success');
     } catch (error) {
+        console.error('Failed to load devices:', error);
         showNotification('Failed to load devices: ' + error.message, 'error');
+        
+        // Show empty state
+        const container = document.getElementById('devices-list');
+        container.innerHTML = `
+            <div style="padding: 20px; text-align: center; color: #666;">
+                <p>Failed to load devices</p>
+                <p style="font-size: 0.9em;">${error.message}</p>
+                <p style="font-size: 0.9em;">Check that the server is running at: ${config.serverUrl}</p>
+                <button class="btn btn-secondary" onclick="refreshDevices()">Retry</button>
+            </div>
+        `;
     }
 }
 
@@ -98,24 +148,68 @@ function displayDevices(devices) {
     const container = document.getElementById('devices-list');
     
     if (devices.length === 0) {
-        container.innerHTML = '<p style="color: #666;">No devices registered. Add a device below.</p>';
+        container.innerHTML = `
+            <div style="padding: 20px; text-align: center; color: #666;">
+                <p>No devices registered yet.</p>
+                <p style="font-size: 0.9em;">Add a device using the form below, or use the configuration script:</p>
+                <code style="display: block; margin: 10px 0; padding: 10px; background: #f5f5f5; border-radius: 4px;">
+                    ./scripts/configure-device-for-server.sh DEVICE_IP SERVER_URL
+                </code>
+            </div>
+        `;
         return;
     }
     
-    container.innerHTML = devices.map(device => `
-        <div class="device-card">
-            <h3>${device.id}</h3>
-            <p><strong>Info:</strong> ${device.info ? 'Available' : 'Not available'}</p>
-            <span class="device-status status-online">Registered</span>
-        </div>
-    `).join('');
+    console.log('Displaying devices:', devices);
+    
+    container.innerHTML = devices.map(device => {
+        // Try to parse device name from info XML if available
+        let deviceName = device.id;
+        if (device.info && typeof device.info === 'string') {
+            const nameMatch = device.info.match(/<name>([^<]+)<\/name>/);
+            if (nameMatch) {
+                deviceName = nameMatch[1];
+            }
+        }
+        
+        return `
+            <div class="device-card">
+                <h3>${deviceName}</h3>
+                <p><strong>Device ID:</strong> ${device.id}</p>
+                <p><strong>Status:</strong> ${device.info ? 'Configured' : 'Pending'}</p>
+                <span class="device-status status-online">Registered</span>
+            </div>
+        `;
+    }).join('');
 }
 
 async function populateDeviceSelects() {
+    console.log('Populating device selects...');
+    
     try {
         const response = await fetch(`${config.serverUrl}/account/${config.accountId}/devices`);
+        
+        if (!response.ok) {
+            console.error('Failed to fetch devices for selects:', response.status);
+            return;
+        }
+        
         const data = await response.json();
         const devices = data.devices || [];
+        
+        console.log('Populating selects with', devices.length, 'devices');
+        
+        // Extract device names from XML info
+        const devicesWithNames = devices.map(d => {
+            let deviceName = d.id;
+            if (d.info && typeof d.info === 'string') {
+                const nameMatch = d.info.match(/<name>([^<]+)<\/name>/);
+                if (nameMatch) {
+                    deviceName = nameMatch[1];
+                }
+            }
+            return { id: d.id, name: deviceName };
+        });
         
         const selects = [
             'preset-device-select',
@@ -126,12 +220,16 @@ async function populateDeviceSelects() {
         selects.forEach(selectId => {
             const select = document.getElementById(selectId);
             if (select) {
-                select.innerHTML = devices.map(d => 
-                    `<option value="${d.id}">${d.id}</option>`
-                ).join('');
-                
-                if (devices.length > 0 && !config.currentDevice) {
-                    config.currentDevice = devices[0].id;
+                if (devicesWithNames.length === 0) {
+                    select.innerHTML = '<option value="">No devices available</option>';
+                } else {
+                    select.innerHTML = devicesWithNames.map(d => 
+                        `<option value="${d.id}">${d.name}</option>`
+                    ).join('');
+                    
+                    if (devicesWithNames.length > 0 && !config.currentDevice) {
+                        config.currentDevice = devicesWithNames[0].id;
+                    }
                 }
             }
         });
@@ -139,12 +237,16 @@ async function populateDeviceSelects() {
         // Populate zone slaves checkboxes
         const slavesContainer = document.getElementById('zone-slaves');
         if (slavesContainer) {
-            slavesContainer.innerHTML = devices.map(d => `
-                <label>
-                    <input type="checkbox" value="${d.id}">
-                    ${d.id}
-                </label>
-            `).join('');
+            if (devicesWithNames.length === 0) {
+                slavesContainer.innerHTML = '<p style="color: #666;">No devices available</p>';
+            } else {
+                slavesContainer.innerHTML = devicesWithNames.map(d => `
+                    <label>
+                        <input type="checkbox" value="${d.id}">
+                        ${d.name}
+                    </label>
+                `).join('');
+            }
         }
     } catch (error) {
         console.error('Failed to populate device selects:', error);
@@ -155,20 +257,54 @@ async function populateDeviceSelects() {
 document.getElementById('add-device-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     
-    const deviceData = {
-        id: document.getElementById('device-id').value,
-        name: document.getElementById('device-name').value,
-        host: document.getElementById('device-host').value,
-        port: parseInt(document.getElementById('device-port').value),
-        accountId: config.accountId
-    };
+    const deviceId = document.getElementById('device-id').value;
+    const deviceName = document.getElementById('device-name').value;
+    const deviceHost = document.getElementById('device-host').value;
+    const devicePort = parseInt(document.getElementById('device-port').value);
+    
+    console.log('Adding device:', { deviceId, deviceName, deviceHost, devicePort });
     
     try {
-        // Register device via device manager (this would need to be implemented)
-        showNotification('Device added successfully', 'success');
-        e.target.reset();
-        refreshDevices();
+        // Create device info XML
+        const deviceInfoXml = `<?xml version="1.0" encoding="UTF-8"?>
+<info deviceID="${deviceId}">
+    <name>${deviceName}</name>
+    <type>SoundTouch</type>
+    <networkInfo>
+        <ipAddress>${deviceHost}</ipAddress>
+        <macAddress>00:00:00:00:00:00</macAddress>
+    </networkInfo>
+</info>`;
+        
+        console.log('Registering device with XML:', deviceInfoXml);
+        
+        // Register device with server
+        const response = await fetch(`${config.serverUrl}/device/register`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/xml',
+                'X-Account-ID': config.accountId
+            },
+            body: deviceInfoXml
+        });
+        
+        console.log('Registration response status:', response.status);
+        const responseText = await response.text();
+        console.log('Registration response:', responseText);
+        
+        if (response.ok || responseText.includes('OK') || responseText.includes('status')) {
+            showNotification('Device added successfully', 'success');
+            e.target.reset();
+            
+            // Refresh device list after a short delay
+            setTimeout(() => {
+                refreshDevices();
+            }, 500);
+        } else {
+            throw new Error(`Registration failed: ${responseText}`);
+        }
     } catch (error) {
+        console.error('Failed to add device:', error);
         showNotification('Failed to add device: ' + error.message, 'error');
     }
 });
@@ -466,13 +602,56 @@ async function loadZones() {
         const parser = new DOMParser();
         const xml = parser.parseFromString(text, 'text/xml');
         
-        displayZone(xml);
+        await displayZone(xml);
     } catch (error) {
         console.error('Failed to load zones:', error);
     }
 }
 
-function displayZone(xml) {
+// Helper function to get device name by ID
+async function getDeviceName(deviceId) {
+    try {
+        const response = await fetch(`${config.serverUrl}/account/${config.accountId}/devices`);
+        const data = await response.json();
+        const device = data.devices.find(d => d.id === deviceId);
+        
+        if (device && device.info) {
+            const nameMatch = device.info.match(/<name>([^<]+)<\/name>/);
+            if (nameMatch) {
+                return nameMatch[1];
+            }
+        }
+        return deviceId;
+    } catch (error) {
+        return deviceId;
+    }
+}
+
+// Helper function to get device name by IP
+async function getDeviceNameByIP(ipAddress) {
+    try {
+        const response = await fetch(`${config.serverUrl}/account/${config.accountId}/devices`);
+        const data = await response.json();
+        
+        for (const device of data.devices) {
+            if (device.info) {
+                const ipMatch = device.info.match(/<ipAddress>([^<]+)<\/ipAddress>/);
+                if (ipMatch && ipMatch[1] === ipAddress) {
+                    const nameMatch = device.info.match(/<name>([^<]+)<\/name>/);
+                    if (nameMatch) {
+                        return nameMatch[1];
+                    }
+                    return device.id;
+                }
+            }
+        }
+        return ipAddress;
+    } catch (error) {
+        return ipAddress;
+    }
+}
+
+async function displayZone(xml) {
     const container = document.getElementById('zones-list');
     const zone = xml.querySelector('zone');
     
@@ -481,25 +660,34 @@ function displayZone(xml) {
         return;
     }
     
-    const master = zone.getAttribute('master');
+    const masterId = zone.getAttribute('master');
     const members = zone.querySelectorAll('member');
+    
+    // Get master device name
+    const masterName = await getDeviceName(masterId);
+    
+    // Get member names by IP
+    const memberPromises = Array.from(members).map(async member => {
+        const role = member.getAttribute('role');
+        const ip = member.getAttribute('ipaddress');
+        const deviceName = await getDeviceNameByIP(ip);
+        return { role, ip, name: deviceName };
+    });
+    
+    const memberData = await Promise.all(memberPromises);
     
     container.innerHTML = `
         <div class="zone-card">
-            <h3>Zone: ${master}</h3>
+            <h3>Zone: ${masterName}</h3>
             <div class="zone-members">
-                ${Array.from(members).map(member => {
-                    const role = member.getAttribute('role');
-                    const ip = member.getAttribute('ipaddress');
-                    return `
-                        <div class="zone-member">
-                            <span>${ip}</span>
-                            <span class="member-role role-${role.toLowerCase()}">${role}</span>
-                        </div>
-                    `;
-                }).join('')}
+                ${memberData.map(member => `
+                    <div class="zone-member">
+                        <span><strong>${member.name}</strong> (${member.ip})</span>
+                        <span class="member-role role-${member.role.toLowerCase()}">${member.role}</span>
+                    </div>
+                `).join('')}
             </div>
-            <button class="btn btn-danger" onclick="removeZone('${master}')">Dissolve Zone</button>
+            <button class="btn btn-danger" onclick="removeZone('${masterId}')">Dissolve Zone</button>
         </div>
     `;
 }
@@ -507,33 +695,61 @@ function displayZone(xml) {
 document.getElementById('zone-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     
-    const master = document.getElementById('zone-master').value;
+    const masterId = document.getElementById('zone-master').value;
     const slaveCheckboxes = document.querySelectorAll('#zone-slaves input:checked');
-    const slaves = Array.from(slaveCheckboxes).map(cb => cb.value);
+    const slaveIds = Array.from(slaveCheckboxes).map(cb => cb.value);
     
-    if (slaves.length === 0) {
+    if (slaveIds.length === 0) {
         showNotification('Select at least one slave device', 'error');
         return;
     }
     
-    // Build zone XML (simplified - would need actual device IPs)
-    const xml = `<zone master="${master}">
-        <member role="MASTER" ipaddress="192.168.1.100"/>
-        ${slaves.map((s, i) => `<member role="SLAVE" ipaddress="192.168.1.${101 + i}"/>`).join('\n')}
-    </zone>`;
-    
     try {
-        const response = await fetch(`${config.serverUrl}/setZone?deviceId=${master}`, {
+        // Get device info to extract IPs
+        const response = await fetch(`${config.serverUrl}/account/${config.accountId}/devices`);
+        const data = await response.json();
+        const devices = data.devices || [];
+        
+        // Helper to get IP from device info
+        const getDeviceIP = (deviceId) => {
+            const device = devices.find(d => d.id === deviceId);
+            if (device && device.info) {
+                const ipMatch = device.info.match(/<ipAddress>([^<]+)<\/ipAddress>/);
+                if (ipMatch) {
+                    return ipMatch[1];
+                }
+            }
+            return '192.168.1.100'; // Fallback
+        };
+        
+        // Build zone XML with actual device IPs
+        const masterIP = getDeviceIP(masterId);
+        const slaveMembers = slaveIds.map(slaveId => {
+            const slaveIP = getDeviceIP(slaveId);
+            return `<member role="SLAVE" ipaddress="${slaveIP}"/>`;
+        }).join('\n        ');
+        
+        const xml = `<zone master="${masterId}">
+        <member role="MASTER" ipaddress="${masterIP}"/>
+        ${slaveMembers}
+    </zone>`;
+        
+        console.log('Creating zone with XML:', xml);
+        
+        const zoneResponse = await fetch(`${config.serverUrl}/setZone?deviceId=${masterId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/xml' },
             body: xml
         });
         
-        if (response.ok) {
+        if (zoneResponse.ok) {
             showNotification('Zone created successfully', 'success');
             loadZones();
+        } else {
+            throw new Error('Failed to create zone');
         }
     } catch (error) {
+        console.error('Zone creation error:', error);
         showNotification('Failed to create zone: ' + error.message, 'error');
     }
 });

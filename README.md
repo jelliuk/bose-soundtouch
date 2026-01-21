@@ -134,6 +134,11 @@ Run the test script to verify all endpoints:
 
 - **[API_REFERENCE.md](API_REFERENCE.md)** - Complete API endpoint documentation
 - **[USAGE.md](USAGE.md)** - Usage guide with examples
+- **[WEB_UI_GUIDE.md](WEB_UI_GUIDE.md)** - Complete Web UI guide
+- **[DEVICE_CONFIGURATION_GUIDE.md](DEVICE_CONFIGURATION_GUIDE.md)** - Device setup guide
+- **[TUNEIN_INTEGRATION.md](TUNEIN_INTEGRATION.md)** - TuneIn/BMX integration
+- **[PRESET_TYPES_GUIDE.md](PRESET_TYPES_GUIDE.md)** - All preset types explained
+- **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Common issues and solutions
 - **examples/** - XML request examples for all operations
 
 ## API Endpoints

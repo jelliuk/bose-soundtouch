@@ -13,19 +13,21 @@ export class DeviceManager extends EventEmitter {
   loadDevices() {
     const configPath = './config/devices.json';
     if (!existsSync(configPath)) {
-      console.log('No devices.json found, creating default...');
+      console.log('No devices.json found, creating empty config...');
       this.createDefaultConfig();
       return;
     }
 
     try {
       const config = JSON.parse(readFileSync(configPath, 'utf8'));
-      config.devices.forEach(deviceConfig => {
-        const device = new Device(deviceConfig);
-        initializeDefaultPresets(device);
-        this.devices.set(device.id, device);
-        console.log(`Loaded device: ${device.name} (${device.id})`);
-      });
+      if (config.devices && config.devices.length > 0) {
+        config.devices.forEach(deviceConfig => {
+          const device = new Device(deviceConfig);
+          initializeDefaultPresets(device);
+          this.devices.set(device.id, device);
+          console.log(`Loaded device from config: ${device.name} (${device.id})`);
+        });
+      }
     } catch (error) {
       console.error('Error loading devices:', error);
     }
@@ -33,17 +35,10 @@ export class DeviceManager extends EventEmitter {
 
   createDefaultConfig() {
     const defaultConfig = {
-      devices: [
-        {
-          id: 'device1',
-          name: 'Living Room Speaker',
-          host: '192.168.1.100',
-          port: 8090
-        }
-      ]
+      devices: []
     };
     writeFileSync('./config/devices.json', JSON.stringify(defaultConfig, null, 2));
-    console.log('Created default config at config/devices.json');
+    console.log('Created empty config at config/devices.json');
   }
 
   getDevice(deviceId) {

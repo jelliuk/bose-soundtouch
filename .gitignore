@@ -2,4 +2,19 @@ node_modules/
 .env
 *.log
 .DS_Store
+
+# Device configuration (contains private device data)
 config/devices.json
+
+# Device data directory (contains device info, presets, etc.)
+data/
+data/accounts/
+data/accounts/*/
+
+# Device configuration instructions (may contain IPs and device IDs)
+device-*-instructions.txt
+
+# Temporary files
+*.tmp
+*.temp
+.cache/

@@ -167,9 +167,68 @@ app.get('/sources', (req, res) => sourceController.getSources(req, res));
 app.get('/listMediaServers', (req, res) => listMediaServersController.listMediaServers(req, res));
 
 const server = app.listen(PORT, () => {
-  console.log(`Bose SoundTouch Server running on port ${PORT}`);
-  console.log(`WebSocket notifications available at ws://localhost:${PORT}/notifications`);
+  console.log('='.repeat(70));
+  console.log('🎵 Bose SoundTouch Server');
+  console.log('='.repeat(70));
+  console.log(`Server:      http://localhost:${PORT}`);
+  console.log(`Web UI:      http://localhost:${PORT}`);
+  console.log(`Test Page:   http://localhost:${PORT}/test.html`);
+  console.log(`WebSocket:   ws://localhost:${PORT}/notifications`);
+  console.log('='.repeat(70));
+  
+  // Load devices from config (legacy)
   deviceManager.loadDevices();
+  
+  // Show statistics from data directory
+  console.log('\n📊 Server Statistics:');
+  console.log('-'.repeat(70));
+  
+  // Get all accounts
+  const accounts = storage.listDevices('default'); // Start with default account
+  console.log(`Accounts:    1 (default)`);
+  console.log(`Devices:     ${accounts.length}`);
+  
+  if (accounts.length > 0) {
+    console.log('\n📱 Registered Devices:');
+    console.log('-'.repeat(70));
+    
+    accounts.forEach(deviceId => {
+      const deviceInfo = storage.loadDeviceInfo('default', deviceId);
+      if (deviceInfo) {
+        // Parse device name from XML
+        const nameMatch = deviceInfo.match(/<name>([^<]+)<\/name>/);
+        const typeMatch = deviceInfo.match(/<type>([^<]+)<\/type>/);
+        const ipMatch = deviceInfo.match(/<ipAddress>([^<]+)<\/ipAddress>/);
+        
+        const name = nameMatch ? nameMatch[1] : 'Unknown';
+        const type = typeMatch ? typeMatch[1] : 'Unknown';
+        const ip = ipMatch ? ipMatch[1] : 'Unknown';
+        
+        console.log(`  • ${name}`);
+        console.log(`    ID:   ${deviceId}`);
+        console.log(`    Type: ${type}`);
+        console.log(`    IP:   ${ip}`);
+        
+        // Check for presets
+        const presets = storage.loadPresets('default', deviceId);
+        if (presets) {
+          const presetMatches = presets.match(/<preset id="/g);
+          const presetCount = presetMatches ? presetMatches.length : 0;
+          console.log(`    Presets: ${presetCount}`);
+        }
+        console.log('');
+      }
+    });
+  } else {
+    console.log('\n⚠️  No devices registered yet.');
+    console.log('   Add devices via Web UI or use:');
+    console.log('   ./scripts/configure-device-for-server.sh DEVICE_IP SERVER_URL');
+  }
+  
+  console.log('='.repeat(70));
+  console.log('✅ Server ready - Waiting for connections...');
+  console.log('='.repeat(70));
+  console.log('');
 });
 
 // WebSocket for notifications

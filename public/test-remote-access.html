@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Remote Access Test - Bose SoundTouch</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .info-box {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .success { background: #d4edda; color: #155724; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        .warning { background: #fff3cd; color: #856404; }
+        code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background: #f5f5f5;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>🌐 Remote Access Test</h1>
+    <p>This page tests the auto-detection of server URL for remote access.</p>
+
+    <div class="info-box info">
+        <h2>📍 Current Location</h2>
+        <table>
+            <tr>
+                <th>Property</th>
+                <th>Value</th>
+            </tr>
+            <tr>
+                <td>Full URL</td>
+                <td><code id="full-url"></code></td>
+            </tr>
+            <tr>
+                <td>Protocol</td>
+                <td><code id="protocol"></code></td>
+            </tr>
+            <tr>
+                <td>Hostname</td>
+                <td><code id="hostname"></code></td>
+            </tr>
+            <tr>
+                <td>Port</td>
+                <td><code id="port"></code></td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="info-box success">
+        <h2>✅ Auto-Detected Server URL</h2>
+        <p style="font-size: 1.2em; font-weight: bold; margin: 10px 0;">
+            <code id="detected-url" style="font-size: 1.1em;"></code>
+        </p>
+        <p>This URL will be used for all API calls.</p>
+    </div>
+
+    <div class="info-box">
+        <h2>🧪 Test API Connection</h2>
+        <button onclick="testConnection()" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer;">
+            Test Connection
+        </button>
+        <div id="test-result" style="margin-top: 15px;"></div>
+    </div>
+
+    <div class="info-box info">
+        <h2>📱 Access Methods</h2>
+        <p>You can access the Web UI using any of these URLs:</p>
+        <ul>
+            <li><strong>Localhost:</strong> <code>http://localhost:8090</code> (same machine only)</li>
+            <li><strong>IP Address:</strong> <code id="ip-url">http://YOUR_SERVER_IP:8090</code></li>
+            <li><strong>Hostname:</strong> <code>http://your-hostname:8090</code> (if DNS configured)</li>
+        </ul>
+        <p><strong>Current method:</strong> <span id="access-method"></span></p>
+    </div>
+
+    <div class="info-box warning">
+        <h2>⚙️ Settings Persistence</h2>
+        <p>Settings are saved in browser localStorage:</p>
+        <ul>
+            <li>Server URL is auto-detected on first visit</li>
+            <li>Settings persist across browser sessions</li>
+            <li>Can be manually changed in Settings tab</li>
+            <li>Each device/browser has its own settings</li>
+        </ul>
+        <button onclick="showLocalStorage()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px;">
+            Show Saved Settings
+        </button>
+        <pre id="localstorage-content" style="background: #f5f5f5; padding: 10px; border-radius: 4px; margin-top: 10px; display: none;"></pre>
+    </div>
+
+    <script>
+        // Get default server URL based on current location
+        function getDefaultServerUrl() {
+            const protocol = window.location.protocol;
+            const hostname = window.location.hostname;
+            const port = window.location.port || '8090';
+            return `${protocol}//${hostname}:${port}`;
+        }
+
+        // Display current location info
+        function displayLocationInfo() {
+            document.getElementById('full-url').textContent = window.location.href;
+            document.getElementById('protocol').textContent = window.location.protocol;
+            document.getElementById('hostname').textContent = window.location.hostname;
+            document.getElementById('port').textContent = window.location.port || '8090';
+            
+            const detectedUrl = getDefaultServerUrl();
+            document.getElementById('detected-url').textContent = detectedUrl;
+            
+            // Update IP URL suggestion
+            if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+                document.getElementById('ip-url').textContent = detectedUrl;
+            }
+            
+            // Determine access method
+            let method = '';
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                method = '🏠 Local (same machine)';
+            } else if (/^\d+\.\d+\.\d+\.\d+$/.test(window.location.hostname)) {
+                method = '🌐 Remote via IP Address';
+            } else {
+                method = '🌐 Remote via Hostname';
+            }
+            document.getElementById('access-method').textContent = method;
+        }
+
+        // Test API connection
+        async function testConnection() {
+            const resultDiv = document.getElementById('test-result');
+            resultDiv.innerHTML = '<p>Testing connection...</p>';
+            
+            const serverUrl = getDefaultServerUrl();
+            
+            try {
+                const response = await fetch(`${serverUrl}/account/default/devices`);
+                const data = await response.json();
+                
+                resultDiv.innerHTML = `
+                    <div style="background: #d4edda; color: #155724; padding: 15px; border-radius: 4px; margin-top: 10px;">
+                        <strong>✅ Connection Successful!</strong>
+                        <p>Server URL: <code>${serverUrl}</code></p>
+                        <p>Response Status: ${response.status}</p>
+                        <p>Devices Found: ${data.devices ? data.devices.length : 0}</p>
+                        ${data.devices && data.devices.length > 0 ? `
+                            <p><strong>Devices:</strong></p>
+                            <ul>
+                                ${data.devices.map(d => `<li>${d.id}</li>`).join('')}
+                            </ul>
+                        ` : ''}
+                    </div>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div style="background: #f8d7da; color: #721c24; padding: 15px; border-radius: 4px; margin-top: 10px;">
+                        <strong>❌ Connection Failed</strong>
+                        <p>Server URL: <code>${serverUrl}</code></p>
+                        <p>Error: ${error.message}</p>
+                        <p><strong>Troubleshooting:</strong></p>
+                        <ul>
+                            <li>Check that the server is running</li>
+                            <li>Verify firewall allows port 8090</li>
+                            <li>Ensure devices are on same network</li>
+                            <li>Try accessing from server machine first</li>
+                        </ul>
+                    </div>
+                `;
+            }
+        }
+
+        // Show localStorage content
+        function showLocalStorage() {
+            const content = document.getElementById('localstorage-content');
+            const saved = localStorage.getItem('bose-config');
+            
+            if (saved) {
+                const config = JSON.parse(saved);
+                content.textContent = JSON.stringify(config, null, 2);
+                content.style.display = 'block';
+            } else {
+                content.textContent = 'No settings saved yet.\nSettings will be saved on first visit to main Web UI.';
+                content.style.display = 'block';
+            }
+        }
+
+        // Initialize on load
+        window.addEventListener('load', () => {
+            displayLocationInfo();
+            console.log('Remote Access Test Page Loaded');
+            console.log('Auto-detected Server URL:', getDefaultServerUrl());
+        });
+    </script>
+</body>
+</html>

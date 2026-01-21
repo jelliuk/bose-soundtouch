@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Test - Bose SoundTouch Server</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #5568d3;
+        }
+        pre {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success { color: #155724; background: #d4edda; padding: 10px; border-radius: 4px; }
+        .error { color: #721c24; background: #f8d7da; padding: 10px; border-radius: 4px; }
+        input {
+            padding: 8px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            width: 300px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 API Test Page</h1>
+    <p>Use this page to test the Bose SoundTouch Server API</p>
+
+    <div class="test-section">
+        <h2>Configuration</h2>
+        <label>
+            Server URL:
+            <input type="text" id="server-url">
+        </label>
+        <br><br>
+        <label>
+            Account ID:
+            <input type="text" id="account-id" value="default">
+        </label>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 1: List Devices</h2>
+        <button onclick="testListDevices()">Test GET /account/:accountId/devices</button>
+        <div id="list-devices-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 2: Register Device</h2>
+        <label>
+            Device ID:
+            <input type="text" id="test-device-id" value="TEST-DEVICE-001">
+        </label>
+        <br><br>
+        <label>
+            Device Name:
+            <input type="text" id="test-device-name" value="Test Device">
+        </label>
+        <br><br>
+        <button onclick="testRegisterDevice()">Test POST /device/register</button>
+        <div id="register-device-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 3: Server Info</h2>
+        <button onclick="testServerInfo()">Test Server Connectivity</button>
+        <div id="server-info-result"></div>
+    </div>
+
+    <script>
+        function getServerUrl() {
+            return document.getElementById('server-url').value;
+        }
+
+        function getAccountId() {
+            return document.getElementById('account-id').value;
+        }
+
+        async function testListDevices() {
+            const resultDiv = document.getElementById('list-devices-result');
+            resultDiv.innerHTML = '<p>Testing...</p>';
+
+            try {
+                const url = `${getServerUrl()}/account/${getAccountId()}/devices`;
+                console.log('Fetching:', url);
+
+                const response = await fetch(url);
+                console.log('Response status:', response.status);
+
+                const data = await response.json();
+                console.log('Response data:', data);
+
+                resultDiv.innerHTML = `
+                    <div class="success">
+                        <strong>✓ Success!</strong>
+                        <p>Status: ${response.status}</p>
+                        <p>Devices found: ${data.devices ? data.devices.length : 0}</p>
+                    </div>
+                    <h3>Response:</h3>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+            } catch (error) {
+                console.error('Error:', error);
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <strong>✗ Error!</strong>
+                        <p>${error.message}</p>
+                    </div>
+                    <p>Check:</p>
+                    <ul>
+                        <li>Server is running (npm start)</li>
+                        <li>Server URL is correct</li>
+                        <li>Browser console for details (F12)</li>
+                    </ul>
+                `;
+            }
+        }
+
+        async function testRegisterDevice() {
+            const resultDiv = document.getElementById('register-device-result');
+            resultDiv.innerHTML = '<p>Testing...</p>';
+
+            try {
+                const deviceId = document.getElementById('test-device-id').value;
+                const deviceName = document.getElementById('test-device-name').value;
+
+                const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<info deviceID="${deviceId}">
+    <name>${deviceName}</name>
+    <type>SoundTouch Test</type>
+</info>`;
+
+                console.log('Registering device:', deviceId);
+                console.log('XML:', xml);
+
+                const response = await fetch(`${getServerUrl()}/device/register`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/xml',
+                        'X-Account-ID': getAccountId()
+                    },
+                    body: xml
+                });
+
+                console.log('Response status:', response.status);
+                const responseText = await response.text();
+                console.log('Response:', responseText);
+
+                if (response.ok || responseText.includes('OK')) {
+                    resultDiv.innerHTML = `
+                        <div class="success">
+                            <strong>✓ Success!</strong>
+                            <p>Device registered: ${deviceId}</p>
+                            <p>Status: ${response.status}</p>
+                        </div>
+                        <h3>Response:</h3>
+                        <pre>${responseText}</pre>
+                        <p><button onclick="testListDevices()">Refresh Device List</button></p>
+                    `;
+                } else {
+                    throw new Error(`Registration failed: ${responseText}`);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <strong>✗ Error!</strong>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        async function testServerInfo() {
+            const resultDiv = document.getElementById('server-info-result');
+            resultDiv.innerHTML = '<p>Testing...</p>';
+
+            const tests = [
+                { name: 'Root', url: '/' },
+                { name: 'Account Devices', url: `/account/${getAccountId()}/devices` },
+                { name: 'TuneIn Search', url: '/tunein/search?query=test' }
+            ];
+
+            let html = '<h3>Server Connectivity Tests:</h3>';
+
+            for (const test of tests) {
+                try {
+                    const url = getServerUrl() + test.url;
+                    const start = Date.now();
+                    const response = await fetch(url);
+                    const time = Date.now() - start;
+
+                    html += `
+                        <div class="success" style="margin: 10px 0;">
+                            <strong>✓ ${test.name}</strong>
+                            <p>Status: ${response.status} | Time: ${time}ms</p>
+                            <p>URL: ${url}</p>
+                        </div>
+                    `;
+                } catch (error) {
+                    html += `
+                        <div class="error" style="margin: 10px 0;">
+                            <strong>✗ ${test.name}</strong>
+                            <p>Error: ${error.message}</p>
+                            <p>URL: ${getServerUrl() + test.url}</p>
+                        </div>
+                    `;
+                }
+            }
+
+            resultDiv.innerHTML = html;
+        }
+
+        // Auto-detect server URL and initialize
+        window.addEventListener('load', () => {
+            // Auto-detect server URL from current location
+            const protocol = window.location.protocol;
+            const hostname = window.location.hostname;
+            const port = window.location.port || '8090';
+            const autoDetectedUrl = `${protocol}//${hostname}:${port}`;
+            
+            document.getElementById('server-url').value = autoDetectedUrl;
+            
+            console.log('API Test Page Loaded');
+            console.log('Auto-detected Server URL:', autoDetectedUrl);
+            console.log('Account ID:', getAccountId());
+        });
+    </script>
+</body>
+</html>
